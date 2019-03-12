@@ -402,19 +402,19 @@ class Nova():
                 schedulable_instances_capacity.labels(*l).set(self._get_schedulable_instances_capacity(h))
 
     def gen_instance_stats(self):
-        missing_flavors = False
         instances = Gauge('nova_instances',
                           'Nova instances metrics',
                           ['cloud', 'tenant', 'instance_state'], registry=self.registry)
         res_ram = Gauge('nova_resources_ram_mbs',
                         'Nova RAM usage metric',
-                        ['cloud', 'tenant'], registry=self.registry)
+                        ['cloud', 'tenant', 'missing_flavor'], registry=self.registry)
         res_vcpus = Gauge('nova_resources_vcpus',
                           'Nova vCPU usage metric',
-                          ['cloud', 'tenant'], registry=self.registry)
+                          ['cloud', 'tenant', 'missing_flavor'], registry=self.registry)
         res_disk = Gauge('nova_resources_disk_gbs',
                          'Nova disk usage metric',
-                         ['cloud', 'tenant'], registry=self.registry)
+                         ['cloud', 'tenant', 'missing_flavor'], registry=self.registry)
+
         for i in self.prodstack['instances']:
             if i['tenant_id'] in self.tenant_map:
                 tenant = self.tenant_map[i['tenant_id']]
@@ -424,23 +424,14 @@ class Nova():
 
             if i['flavor']['id'] in self.flavor_map:
                 flavor = self.flavor_map[i['flavor']['id']]
-                res_ram.labels(config['cloud'], tenant).inc(flavor['ram'])
-                res_vcpus.labels(config['cloud'], tenant).inc(flavor['vcpus'])
-                res_disk.labels(config['cloud'], tenant).inc(flavor['disk'])
+                res_ram.labels(config['cloud'], tenant, 'false').inc(flavor['ram'])
+                res_vcpus.labels(config['cloud'], tenant, 'false').inc(flavor['vcpus'])
+                res_disk.labels(config['cloud'], tenant, 'false').inc(flavor['disk'])
             else:
-                missing_flavors = True
-
-        # If flavors were deleted we can't reliably find out resouerce use
-        if missing_flavors:
-            self.registry.unregister(res_ram)
-            self.registry.unregister(res_vcpus)
-            self.registry.unregister(res_disk)
-            res_ram = Gauge('nova_resources_ram_mbs', 'Nova RAM usage metric unavailable, missing flavors',
-                            [], registry=self.registry)
-            res_vcpus = Gauge('nova_resources_vcpus', 'Nova vCPU usage metric unavailable, missing flavors',
-                              [], registry=self.registry)
-            res_disk = Gauge('nova_resources_disk_gbs', 'Nova disk usage metric unavailable, missing flavors',
-                             [], registry=self.registry)
+                # If the flavor is missing mark it as a tenant with missing flavors
+                res_ram.labels(config['cloud'], tenant, 'true')
+                res_vcpus.labels(config['cloud'], tenant, 'true')
+                res_disk.labels(config['cloud'], tenant, 'true')
 
     def gen_overcommit_stats(self):
         labels = ['cloud', 'resource']
